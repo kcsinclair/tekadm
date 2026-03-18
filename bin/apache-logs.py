@@ -1,3 +1,25 @@
+# 
+# Copyright (c) 2026 Keith Sinclair
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# 
+
 import re
 import argparse
 import ipaddress
@@ -82,8 +104,9 @@ def parse_access_log(log_file):
     """
 
     # Apache/Nginx combined log format pattern
+    # Matches both IPv4 (192.168.1.1) and IPv6 ([2400:cb00:548:1000:4725:8fb3:735e:7194])
     log_pattern = re.compile(
-        r'(\d+\.\d+\.\d+\.\d+)\s+'  # IP address
+        r'(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])\s+'  # IP address (IPv4 or IPv6)
         r'.*?\[([^\]]+)\]\s+'  # Timestamp
         r'"([A-Z]+\s+\S+\s+\S+)"\s+'  # Request
         r'(\d+)\s+'  # Status code
@@ -197,11 +220,28 @@ def print_summary(traffic_summary):
 
 
 def get_ip_blocks(ip):
-    """Get /24 and /16 network blocks for an IP address."""
+    """
+    Get network blocks for an IP address.
+    IPv4: /24 and /16 blocks
+    IPv6: /64 and /48 blocks
+    """
     try:
-        block_24 = str(ipaddress.ip_network(f"{ip}/24", strict=False))
-        block_16 = str(ipaddress.ip_network(f"{ip}/16", strict=False))
-        return block_24, block_16
+        # Remove brackets if present (IPv6 from log format)
+        ip_clean = ip.strip('[]')
+
+        # Parse the IP address to determine type
+        ip_obj = ipaddress.ip_address(ip_clean)
+
+        if isinstance(ip_obj, ipaddress.IPv4Address):
+            # IPv4: use /24 and /16
+            block_subnet = str(ipaddress.ip_network(f"{ip_clean}/24", strict=False))
+            block_supernet = str(ipaddress.ip_network(f"{ip_clean}/16", strict=False))
+        else:
+            # IPv6: use /64 and /48
+            block_subnet = str(ipaddress.ip_network(f"{ip_clean}/64", strict=False))
+            block_supernet = str(ipaddress.ip_network(f"{ip_clean}/48", strict=False))
+
+        return block_subnet, block_supernet
     except ValueError:
         return "N/A", "N/A"
 
@@ -246,7 +286,7 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
 
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['IP Address', 'IP Block 24', 'IP Block 16', 'Agent Requests', 'First Seen', 'Last Seen', 'User Agent Type', 'User Agent', 'IP Total Requests', 'Percentage of IP'])
+        writer.writerow(['IP Address', 'Network Subnet', 'Network Supernet', 'Agent Requests', 'First Seen', 'Last Seen', 'User Agent Type', 'User Agent', 'IP Total Requests', 'Percentage of IP'])
 
         for ip, data in sorted(traffic_summary.items(), key=lambda x: x[1]['count'], reverse=True):
             block_24, block_16 = get_ip_blocks(ip)

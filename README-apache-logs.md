@@ -48,9 +48,9 @@ When processing logs, the script generates four output files with the specified 
 Detailed breakdown by IP address and user agent.
 
 **Columns:**
-- IP Address
-- IP Block /24 (CIDR network block)
-- IP Block /16 (larger network block)
+- IP Address (IPv4 or IPv6)
+- Network Subnet (IPv4: /24 subnet, IPv6: /64 subnet)
+- Network Supernet (IPv4: /16 block, IPv6: /48 block)
 - Agent Requests (requests from this agent)
 - First Seen (earliest timestamp)
 - Last Seen (latest timestamp)
@@ -92,16 +92,23 @@ High-level URL patterns grouped by method and first two path segments.
 
 ## Log Format
 
-The script expects Apache/Nginx combined log format:
+The script expects Apache/Nginx combined log format and supports both **IPv4 and IPv6** addresses:
 
 ```
 <IP> - - [<timestamp>] "<REQUEST>" <STATUS> <BYTES> "<REFERER>" "<USER_AGENT>"
 ```
 
-Example:
+**IPv4 Example:**
 ```
-192.168.1.100 - - [13/Mar/2026:14:07:06 +0000] "GET /shop/product/123 HTTP/1.1" 200 1024 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+192.168.1.100 - - [13/Mar/2026:14:07:06 +0000] "GET /shop/product/123 HTTP/1.1" 200 1024 "-" "Mozilla/5.0"
 ```
+
+**IPv6 Example:**
+```
+[2400:cb00:548:1000:4725:8fb3:735e:7194] - - [13/Mar/2026:14:07:06 +0000] "POST /api/search HTTP/1.1" 200 2048 "-" "curl/7.64.1"
+```
+
+**Note:** IPv6 addresses should be enclosed in square brackets `[]`, which is the Apache/Nginx standard format.
 
 ## Data Processing
 
@@ -123,9 +130,14 @@ Pattern-based classification with support for:
 - General browsers and crawlers
 - Fallback to "Unknown" for unrecognized agents
 
-### IP Network Blocks
-- `/24` block: Identifies the /24 subnet (typically an ISP provider block)
-- `/16` block: Identifies the /16 supernet (broader network range)
+### Network Blocks
+**IPv4:**
+- `/24` subnet: Identifies the network subnet (typically an ISP provider block)
+- `/16` supernet: Identifies the larger network range
+
+**IPv6:**
+- `/64` subnet: Identifies the network subnet (standard IPv6 subnet size)
+- `/48` supernet: Identifies the larger network allocation (typical ISP allocation)
 
 ## Merging Multiple Files
 
