@@ -219,6 +219,20 @@ def print_summary(traffic_summary):
         print()
 
 
+def load_suspect_ips():
+    """
+    Load suspect IP addresses from ipsum/ipsum-level1.txt.
+    Returns a set of IP strings for fast lookup.
+    """
+    ipsum_path = Path(__file__).resolve().parent.parent / 'ipsum' / 'ipsum-level1.txt'
+    try:
+        with open(ipsum_path, 'r') as f:
+            return {line.strip() for line in f if line.strip()}
+    except FileNotFoundError:
+        print(f"Warning: Suspect IP list not found at {ipsum_path} — skipping IP status checks")
+        return set()
+
+
 def get_ip_blocks(ip):
     """
     Get network blocks for an IP address.
@@ -284,12 +298,17 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
 
     import csv
 
+    suspect_ips = load_suspect_ips()
+
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['IP Address', 'Network Subnet', 'Network Supernet', 'Agent Requests', 'First Seen', 'Last Seen', 'User Agent Type', 'User Agent', 'IP Total Requests', 'Percentage of IP'])
+        writer.writerow(['IP Address', 'IP Status', 'Network Subnet', 'Network Supernet', 'Agent Requests', 'First Seen', 'Last Seen', 'User Agent Type', 'User Agent', 'IP Total Requests', 'Percentage of IP'])
 
         for ip, data in sorted(traffic_summary.items(), key=lambda x: x[1]['count'], reverse=True):
             block_24, block_16 = get_ip_blocks(ip)
+            # Strip brackets for IPv6 before checking suspect list
+            ip_clean = ip.strip('[]')
+            ip_status = "Suspect IP Address" if ip_clean in suspect_ips else "IP Address OK"
             agents_list = sorted(data['user_agents'].items(), key=lambda x: x[1]['count'], reverse=True)
 
             for idx, (agent, agent_data) in enumerate(agents_list):
@@ -298,9 +317,9 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
                 agent_type = classify_user_agent(agent)
                 # Only include IP totals on first agent row for each IP to avoid double-counting
                 if idx == 0:
-                    writer.writerow([ip, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, data['count'], f"{percentage:.1f}%"])
+                    writer.writerow([ip, ip_status, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, data['count'], f"{percentage:.1f}%"])
                 else:
-                    writer.writerow([ip, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, "", f"{percentage:.1f}%"])
+                    writer.writerow([ip, ip_status, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, "", f"{percentage:.1f}%"])
 
     print(f"Summary exported to {output_file}")
 

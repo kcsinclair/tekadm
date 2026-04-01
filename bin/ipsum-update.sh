@@ -22,16 +22,13 @@
 # SOFTWARE.
 # 
 
-# ---------------------------------------------------------------------------
-# OS CHECK
-# ---------------------------------------------------------------------------
-if [ "$(uname -s)" != "Linux" ]; then
-    echo "ERROR: This script only supports Linux. Detected: $(uname -s)" >&2
-    exit 1
-fi
+cd /Users/keith/Projects/tekadm/ipsum
 
-# simple effective works.
-for file in /proc/*/status ; do awk '/VmSwap|Name/{printf $2 " " $3}END{ print ""}' $file; done | grep kB | sort -k 2 -n
-echo
-grep -E "SwapTotal|SwapFree" /proc/meminfo
-
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/1.txt -o ipsum-level1.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/2.txt -o ipsum-level2.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/3.txt -o ipsum-level3.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/4.txt -o ipsum-level4.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/5.txt -o ipsum-level5.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/6.txt -o ipsum-level6.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/7.txt -o ipsum-level7.txt
+curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/8.txt -o ipsum-level8.txt
