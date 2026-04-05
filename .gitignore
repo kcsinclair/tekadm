@@ -1,9 +1,4 @@
 .DS_Store
-ipsum/ipsum-level1.txt
-ipsum/ipsum-level2.txt
-ipsum/ipsum-level3.txt
-ipsum/ipsum-level4.txt
-ipsum/ipsum-level5.txt
-ipsum/ipsum-level6.txt
-ipsum/ipsum-level7.txt
-ipsum/ipsum-level8.txt
+ipsum
+GeoLite2
+python

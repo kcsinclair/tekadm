@@ -22,7 +22,19 @@
 # SOFTWARE.
 # 
 
-cd /Users/keith/Projects/tekadm/ipsum
+if [ -f "bin/ipsum-update.sh" ]; then
+    echo this is the project root, proceeding with update
+else
+    echo "ipsum-update.sh not found. Please run this script from the project root."
+    exit 1
+fi
+
+if [ -d "ipsum" ]; then
+    cd ipsum
+else
+    mkdir ipsum
+    cd ipsum
+fi
 
 curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/1.txt -o ipsum-level1.txt
 curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/2.txt -o ipsum-level2.txt
@@ -32,3 +44,7 @@ curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/5
 curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/6.txt -o ipsum-level6.txt
 curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/7.txt -o ipsum-level7.txt
 curl https://raw.githubusercontent.com/stamparm/ipsum/refs/heads/master/levels/8.txt -o ipsum-level8.txt
+
+# everything 3 and above is bad
+curl -fsSL https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt 2>/dev/null | grep -v "^#" | grep -Ev '[[:space:]]([12])$' | cut -f 1 > ipsum-bad.txt
+

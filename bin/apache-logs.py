@@ -22,6 +22,8 @@
 
 import re
 import argparse
+import bisect
+import csv
 import ipaddress
 from collections import defaultdict
 from pathlib import Path
@@ -97,10 +99,11 @@ def extract_url_type(endpoint):
         return url_type
 
 
-def parse_access_log(log_file):
+def parse_access_log(log_file, ignore_pattern=None):
     """
     Parse web server access logs and summarize traffic by IP, user agent, and endpoint.
     Works with Apache/Nginx combined log format.
+    Lines matching ignore_pattern (regex) are skipped.
     """
 
     # Apache/Nginx combined log format pattern
@@ -127,9 +130,15 @@ def parse_access_log(log_file):
     # Data structure for URL types: {url_type: {'count': int, 'first_seen': timestamp, 'last_seen': timestamp, 'method': str}}
     url_type_summary = defaultdict(lambda: {'count': 0, 'first_seen': None, 'last_seen': None, 'method': None})
 
+    ignore_re = re.compile(ignore_pattern) if ignore_pattern else None
+    ignored_count = 0
+
     try:
         with open(log_file, 'r') as f:
             for line_num, line in enumerate(f, 1):
+                if ignore_re and ignore_re.search(line):
+                    ignored_count += 1
+                    continue
                 match = log_pattern.search(line)
                 if match:
                     ip = match.group(1)
@@ -174,6 +183,9 @@ def parse_access_log(log_file):
     except FileNotFoundError:
         print(f"Error: Log file '{log_file}' not found")
         return None, None, None
+
+    if ignored_count > 0:
+        print(f"    Ignored {ignored_count} lines matching pattern: {ignore_pattern}")
 
     return traffic_summary, endpoint_summary, url_type_summary
 
@@ -221,16 +233,94 @@ def print_summary(traffic_summary):
 
 def load_suspect_ips():
     """
-    Load suspect IP addresses from ipsum/ipsum-level1.txt.
+    Load suspect IP addresses from ipsum/ipsum-bad.txt.
     Returns a set of IP strings for fast lookup.
     """
-    ipsum_path = Path(__file__).resolve().parent.parent / 'ipsum' / 'ipsum-level1.txt'
+    ipsum_path = Path(__file__).resolve().parent.parent / 'ipsum' / 'ipsum-bad.txt'
     try:
         with open(ipsum_path, 'r') as f:
             return {line.strip() for line in f if line.strip()}
     except FileNotFoundError:
         print(f"Warning: Suspect IP list not found at {ipsum_path} — skipping IP status checks")
         return set()
+
+
+def load_geolite2_locations():
+    """
+    Load GeoLite2 country locations lookup.
+    Returns dict: {geoname_id: {country_name, country_iso_code, continent_name}}
+    """
+    locations_path = Path(__file__).resolve().parent.parent / 'GeoLite2' / 'GeoLite2-Country-Locations-en.csv'
+    locations = {}
+    try:
+        with open(locations_path, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                locations[row['geoname_id']] = {
+                    'country_name': row['country_name'],
+                    'country_iso_code': row['country_iso_code'],
+                    'continent_name': row['continent_name'],
+                }
+    except FileNotFoundError:
+        print(f"Warning: GeoLite2 locations file not found at {locations_path}")
+    return locations
+
+
+def load_geolite2_blocks():
+    """
+    Load GeoLite2 IPv4 CIDR blocks as a sorted list for binary search.
+    Returns list of (start_int, end_int, geoname_id) sorted by start_int.
+    """
+    blocks_path = Path(__file__).resolve().parent.parent / 'GeoLite2' / 'GeoLite2-Country-Blocks-IPv4.csv'
+    blocks = []
+    try:
+        with open(blocks_path, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                geoname_id = row['geoname_id'] or row['registered_country_geoname_id']
+                if not geoname_id:
+                    continue
+                network = ipaddress.ip_network(row['network'], strict=False)
+                start_int = int(network.network_address)
+                end_int = int(network.broadcast_address)
+                blocks.append((start_int, end_int, geoname_id))
+        blocks.sort(key=lambda x: x[0])
+        print(f"  Loaded {len(blocks)} GeoLite2 IPv4 blocks")
+    except FileNotFoundError:
+        print(f"Warning: GeoLite2 blocks file not found at {blocks_path}")
+    return blocks
+
+
+def lookup_country(ip, blocks, locations):
+    """
+    Look up country for an IPv4 address using binary search on GeoLite2 blocks.
+    Returns (country_name, country_iso_code, continent_name) or ("Unknown", ...) if not found.
+    """
+    try:
+        ip_clean = ip.strip('[]')
+        ip_obj = ipaddress.ip_address(ip_clean)
+
+        # IPv6 not supported for geo lookup yet
+        if isinstance(ip_obj, ipaddress.IPv6Address):
+            return ("N/A", "N/A", "N/A")
+
+        ip_int = int(ip_obj)
+
+        # Binary search: find rightmost block where start_int <= ip_int
+        idx = bisect.bisect_right(blocks, (ip_int,)) - 1
+        if idx >= 0:
+            start_int, end_int, geoname_id = blocks[idx]
+            if start_int <= ip_int <= end_int:
+                loc = locations.get(geoname_id, {})
+                return (
+                    loc.get('country_name', 'Unknown'),
+                    loc.get('country_iso_code', 'Unknown'),
+                    loc.get('continent_name', 'Unknown'),
+                )
+    except ValueError:
+        pass
+
+    return ("Unknown", "Unknown", "Unknown")
 
 
 def get_ip_blocks(ip):
@@ -296,19 +386,20 @@ def classify_user_agent(user_agent):
 def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
     """Export summary to CSV for further analysis."""
 
-    import csv
-
     suspect_ips = load_suspect_ips()
+    geo_locations = load_geolite2_locations()
+    geo_blocks = load_geolite2_blocks()
 
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['IP Address', 'IP Status', 'Network Subnet', 'Network Supernet', 'Agent Requests', 'First Seen', 'Last Seen', 'User Agent Type', 'User Agent', 'IP Total Requests', 'Percentage of IP'])
+        writer.writerow(['IP Address', 'IP Status', 'Country', 'Country Code', 'Continent', 'Network Subnet', 'Network Supernet', 'Agent Requests', 'First Seen', 'Last Seen', 'User Agent Type', 'User Agent', 'IP Total Requests', 'Percentage of IP'])
 
         for ip, data in sorted(traffic_summary.items(), key=lambda x: x[1]['count'], reverse=True):
             block_24, block_16 = get_ip_blocks(ip)
             # Strip brackets for IPv6 before checking suspect list
             ip_clean = ip.strip('[]')
             ip_status = "Suspect IP Address" if ip_clean in suspect_ips else "IP Address OK"
+            country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations)
             agents_list = sorted(data['user_agents'].items(), key=lambda x: x[1]['count'], reverse=True)
 
             for idx, (agent, agent_data) in enumerate(agents_list):
@@ -317,17 +408,15 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
                 agent_type = classify_user_agent(agent)
                 # Only include IP totals on first agent row for each IP to avoid double-counting
                 if idx == 0:
-                    writer.writerow([ip, ip_status, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, data['count'], f"{percentage:.1f}%"])
+                    writer.writerow([ip, ip_status, country_name, country_iso, continent_name, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, data['count'], f"{percentage:.1f}%"])
                 else:
-                    writer.writerow([ip, ip_status, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, "", f"{percentage:.1f}%"])
+                    writer.writerow([ip, ip_status, country_name, country_iso, continent_name, block_24, block_16, count, agent_data['first_seen'], agent_data['last_seen'], agent_type, agent, "", f"{percentage:.1f}%"])
 
     print(f"Summary exported to {output_file}")
 
 
 def export_endpoints_to_csv(endpoint_summary, output_file='endpoint_summary.csv'):
     """Export endpoint summary to CSV for further analysis."""
-
-    import csv
 
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -342,8 +431,6 @@ def export_endpoints_to_csv(endpoint_summary, output_file='endpoint_summary.csv'
 
 def export_url_types_to_csv(url_type_summary, output_file='url_type_summary.csv'):
     """Export URL type summary to CSV for further analysis."""
-
-    import csv
 
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -402,6 +489,197 @@ def generate_agent_type_graph(traffic_summary, output_file='agent_type_summary.p
     plt.close()
 
     print(f"Agent type summary chart saved to {output_file}")
+
+
+def generate_country_graph(traffic_summary, output_file='country_summary.png'):
+    """Generate a bar chart showing total requests by country."""
+
+    geo_locations = load_geolite2_locations()
+    geo_blocks = load_geolite2_blocks()
+
+    # Aggregate request counts by country
+    country_counts = defaultdict(int)
+
+    for ip, data in traffic_summary.items():
+        country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations)
+        country_counts[country_name] += data['count']
+
+    if not country_counts:
+        print("No country data available for chart")
+        return
+
+    # Sort by count descending
+    sorted_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)
+
+    # Limit to top 25 countries for readability
+    if len(sorted_countries) > 25:
+        top_countries = sorted_countries[:25]
+        other_count = sum(count for _, count in sorted_countries[25:])
+        top_countries.append(('Other', other_count))
+        sorted_countries = top_countries
+
+    countries, counts = zip(*sorted_countries)
+
+    # Create horizontal bar chart
+    fig, ax = plt.subplots(figsize=(12, max(6, len(countries) * 0.35)))
+
+    bars = ax.barh(countries, counts, color='#2E86AB', edgecolor='#333333', linewidth=1.2)
+
+    # Add value labels on bars
+    for bar, count in zip(bars, counts):
+        width = bar.get_width()
+        ax.text(width + max(counts) * 0.01, bar.get_y() + bar.get_height()/2,
+                f'{int(count):,}', ha='left', va='center', fontsize=9, fontweight='bold')
+
+    ax.set_xlabel('Number of Requests', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Country', fontsize=11, fontweight='bold')
+    ax.set_title('Traffic Summary by Country', fontsize=13, fontweight='bold', pad=20)
+
+    # Format x-axis with thousand separators
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, p: f'{int(x):,}'))
+
+    # Remove top and right spines for cleaner look
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    # Invert y-axis so highest count is at the top
+    ax.invert_yaxis()
+
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print(f"Country summary chart saved to {output_file}")
+
+
+def generate_country_map(traffic_summary, output_file='country_map.png'):
+    """Generate a world heatmap showing request counts by country using plotly choropleth."""
+    import plotly.graph_objects as go
+    import math
+
+    # ISO 3166-1 alpha-2 to alpha-3 mapping for plotly (which requires ISO-3)
+    ISO2_TO_ISO3 = {
+        'AD': 'AND', 'AE': 'ARE', 'AF': 'AFG', 'AG': 'ATG', 'AI': 'AIA', 'AL': 'ALB', 'AM': 'ARM',
+        'AO': 'AGO', 'AQ': 'ATA', 'AR': 'ARG', 'AS': 'ASM', 'AT': 'AUT', 'AU': 'AUS', 'AW': 'ABW',
+        'AX': 'ALA', 'AZ': 'AZE', 'BA': 'BIH', 'BB': 'BRB', 'BD': 'BGD', 'BE': 'BEL', 'BF': 'BFA',
+        'BG': 'BGR', 'BH': 'BHR', 'BI': 'BDI', 'BJ': 'BEN', 'BL': 'BLM', 'BM': 'BMU', 'BN': 'BRN',
+        'BO': 'BOL', 'BQ': 'BES', 'BR': 'BRA', 'BS': 'BHS', 'BT': 'BTN', 'BV': 'BVT', 'BW': 'BWA',
+        'BY': 'BLR', 'BZ': 'BLZ', 'CA': 'CAN', 'CC': 'CCK', 'CD': 'COD', 'CF': 'CAF', 'CG': 'COG',
+        'CH': 'CHE', 'CI': 'CIV', 'CK': 'COK', 'CL': 'CHL', 'CM': 'CMR', 'CN': 'CHN', 'CO': 'COL',
+        'CR': 'CRI', 'CU': 'CUB', 'CV': 'CPV', 'CW': 'CUW', 'CX': 'CXR', 'CY': 'CYP', 'CZ': 'CZE',
+        'DE': 'DEU', 'DJ': 'DJI', 'DK': 'DNK', 'DM': 'DMA', 'DO': 'DOM', 'DZ': 'DZA', 'EC': 'ECU',
+        'EE': 'EST', 'EG': 'EGY', 'EH': 'ESH', 'ER': 'ERI', 'ES': 'ESP', 'ET': 'ETH', 'FI': 'FIN',
+        'FJ': 'FJI', 'FK': 'FLK', 'FM': 'FSM', 'FO': 'FRO', 'FR': 'FRA', 'GA': 'GAB', 'GB': 'GBR',
+        'GD': 'GRD', 'GE': 'GEO', 'GF': 'GUF', 'GG': 'GGY', 'GH': 'GHA', 'GI': 'GIB', 'GL': 'GRL',
+        'GM': 'GMB', 'GN': 'GIN', 'GP': 'GLP', 'GQ': 'GNQ', 'GR': 'GRC', 'GS': 'SGS', 'GT': 'GTM',
+        'GU': 'GUM', 'GW': 'GNB', 'GY': 'GUY', 'HK': 'HKG', 'HM': 'HMD', 'HN': 'HND', 'HR': 'HRV',
+        'HT': 'HTI', 'HU': 'HUN', 'ID': 'IDN', 'IE': 'IRL', 'IL': 'ISR', 'IM': 'IMN', 'IN': 'IND',
+        'IO': 'IOT', 'IQ': 'IRQ', 'IR': 'IRN', 'IS': 'ISL', 'IT': 'ITA', 'JE': 'JEY', 'JM': 'JAM',
+        'JO': 'JOR', 'JP': 'JPN', 'KE': 'KEN', 'KG': 'KGZ', 'KH': 'KHM', 'KI': 'KIR', 'KM': 'COM',
+        'KN': 'KNA', 'KP': 'PRK', 'KR': 'KOR', 'KW': 'KWT', 'KY': 'CYM', 'KZ': 'KAZ', 'LA': 'LAO',
+        'LB': 'LBN', 'LC': 'LCA', 'LI': 'LIE', 'LK': 'LKA', 'LR': 'LBR', 'LS': 'LSO', 'LT': 'LTU',
+        'LU': 'LUX', 'LV': 'LVA', 'LY': 'LBY', 'MA': 'MAR', 'MC': 'MCO', 'MD': 'MDA', 'ME': 'MNE',
+        'MF': 'MAF', 'MG': 'MDG', 'MH': 'MHL', 'MK': 'MKD', 'ML': 'MLI', 'MM': 'MMR', 'MN': 'MNG',
+        'MO': 'MAC', 'MP': 'MNP', 'MQ': 'MTQ', 'MR': 'MRT', 'MS': 'MSR', 'MT': 'MLT', 'MU': 'MUS',
+        'MV': 'MDV', 'MW': 'MWI', 'MX': 'MEX', 'MY': 'MYS', 'MZ': 'MOZ', 'NA': 'NAM', 'NC': 'NCL',
+        'NE': 'NER', 'NF': 'NFK', 'NG': 'NGA', 'NI': 'NIC', 'NL': 'NLD', 'NO': 'NOR', 'NP': 'NPL',
+        'NR': 'NRU', 'NU': 'NIU', 'NZ': 'NZL', 'OM': 'OMN', 'PA': 'PAN', 'PE': 'PER', 'PF': 'PYF',
+        'PG': 'PNG', 'PH': 'PHL', 'PK': 'PAK', 'PL': 'POL', 'PM': 'SPM', 'PN': 'PCN', 'PR': 'PRI',
+        'PS': 'PSE', 'PT': 'PRT', 'PW': 'PLW', 'PY': 'PRY', 'QA': 'QAT', 'RE': 'REU', 'RO': 'ROU',
+        'RS': 'SRB', 'RU': 'RUS', 'RW': 'RWA', 'SA': 'SAU', 'SB': 'SLB', 'SC': 'SYC', 'SD': 'SDN',
+        'SE': 'SWE', 'SG': 'SGP', 'SH': 'SHN', 'SI': 'SVN', 'SJ': 'SJM', 'SK': 'SVK', 'SL': 'SLE',
+        'SM': 'SMR', 'SN': 'SEN', 'SO': 'SOM', 'SR': 'SUR', 'SS': 'SSD', 'ST': 'STP', 'SV': 'SLV',
+        'SX': 'SXM', 'SY': 'SYR', 'SZ': 'SWZ', 'TC': 'TCA', 'TD': 'TCD', 'TF': 'ATF', 'TG': 'TGO',
+        'TH': 'THA', 'TJ': 'TJK', 'TK': 'TKL', 'TL': 'TLS', 'TM': 'TKM', 'TN': 'TUN', 'TO': 'TON',
+        'TR': 'TUR', 'TT': 'TTO', 'TV': 'TUV', 'TW': 'TWN', 'TZ': 'TZA', 'UA': 'UKR', 'UG': 'UGA',
+        'UM': 'UMI', 'US': 'USA', 'UY': 'URY', 'UZ': 'UZB', 'VA': 'VAT', 'VC': 'VCT', 'VE': 'VEN',
+        'VG': 'VGB', 'VI': 'VIR', 'VN': 'VNM', 'VU': 'VUT', 'WF': 'WLF', 'WS': 'WSM', 'XK': 'XKX',
+        'YE': 'YEM', 'YT': 'MYT', 'ZA': 'ZAF', 'ZM': 'ZMB', 'ZW': 'ZWE',
+    }
+
+    geo_locations = load_geolite2_locations()
+    geo_blocks = load_geolite2_blocks()
+
+    # Aggregate request counts by ISO country code
+    country_code_counts = defaultdict(lambda: {'count': 0, 'name': ''})
+
+    for ip, data in traffic_summary.items():
+        country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations)
+        if country_iso and country_iso not in ('Unknown', 'N/A'):
+            country_code_counts[country_iso]['count'] += data['count']
+            country_code_counts[country_iso]['name'] = country_name
+
+    if not country_code_counts:
+        print("No country data available for map")
+        return
+
+    iso3_codes = []
+    counts = []
+    names = []
+    for code, info in country_code_counts.items():
+        iso3 = ISO2_TO_ISO3.get(code)
+        if not iso3:
+            continue
+        iso3_codes.append(iso3)
+        counts.append(info['count'])
+        names.append(info['name'])
+
+    # Use log scale for better colour distribution across wide ranges
+    log_counts = [math.log10(c) if c > 0 else 0 for c in counts]
+
+    # Build hover text with actual counts
+    hover_text = [f"{name}<br>{count:,} requests" for name, count in zip(names, counts)]
+
+    fig = go.Figure(data=go.Choropleth(
+        locations=iso3_codes,
+        z=log_counts,
+        text=hover_text,
+        hoverinfo='text',
+        locationmode='ISO-3',
+        colorscale=[
+            [0.0, '#f7fbff'],
+            [0.2, '#c6dbef'],
+            [0.4, '#6baed6'],
+            [0.6, '#2171b5'],
+            [0.8, '#08519c'],
+            [1.0, '#08306b'],
+        ],
+        marker_line_color='#333333',
+        marker_line_width=0.5,
+        colorbar=dict(
+            title=dict(text='Requests'),
+            tickvals=[1, 2, 3, 4, 5, 6],
+            ticktext=['10', '100', '1K', '10K', '100K', '1M'],
+        ),
+    ))
+
+    fig.update_layout(
+        title=dict(
+            text='Traffic by Country',
+            font=dict(size=16, family='Arial, sans-serif'),
+            x=0.5,
+        ),
+        geo=dict(
+            showframe=False,
+            showcoastlines=True,
+            coastlinecolor='#999999',
+            projection_type='natural earth',
+            landcolor='#f0f0f0',
+            showocean=True,
+            oceancolor='#e6f2ff',
+        ),
+        width=1200,
+        height=600,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+
+    # Determine format from file extension
+    if output_file.endswith('.svg'):
+        fig.write_image(output_file, format='svg')
+    else:
+        fig.write_image(output_file, format='png', scale=2)
+
+    print(f"Country heatmap saved to {output_file}")
 
 
 def merge_traffic_summaries(summaries):
@@ -466,7 +744,7 @@ def merge_url_type_summaries(summaries):
     return merged
 
 
-def process_log_files(log_pattern):
+def process_log_files(log_pattern, ignore_pattern=None):
     """
     Process log files matching a pattern (supports wildcards).
     Returns merged summaries from all matching files.
@@ -486,7 +764,7 @@ def process_log_files(log_pattern):
 
     for log_file in matching_files:
         print(f"  Processing: {log_file}")
-        traffic_summary, endpoint_summary, url_type_summary = parse_access_log(log_file)
+        traffic_summary, endpoint_summary, url_type_summary = parse_access_log(log_file, ignore_pattern)
 
         if traffic_summary:
             traffic_summaries.append(traffic_summary)
@@ -550,11 +828,19 @@ across all matching files.
         default='traffic_summary.csv',
         help='Output CSV file name (default: traffic_summary.csv)'
     )
+    parser.add_argument(
+        '-i', '--ignore',
+        default=None,
+        help='Regex pattern to ignore matching log lines (e.g. "ClaudeBot|SemrushBot")'
+    )
 
     args = parser.parse_args()
 
+    if args.ignore:
+        print(f"Ignoring lines matching: {args.ignore}")
+
     print(f"Processing {args.log_file}...")
-    traffic_summary, endpoint_summary, url_type_summary = process_log_files(args.log_file)
+    traffic_summary, endpoint_summary, url_type_summary = process_log_files(args.log_file, args.ignore)
 
     if traffic_summary:
         print_summary(traffic_summary)
@@ -563,6 +849,14 @@ across all matching files.
         # Generate agent type summary graph
         graph_file = args.output.rsplit('.', 1)[0] + '_by_agent_type.png'
         generate_agent_type_graph(traffic_summary, graph_file)
+
+        # Generate country summary graph
+        country_graph_file = args.output.rsplit('.', 1)[0] + '_by_country.png'
+        generate_country_graph(traffic_summary, country_graph_file)
+
+        # Generate country world heatmap
+        country_map_file = args.output.rsplit('.', 1)[0] + '_country_map.png'
+        generate_country_map(traffic_summary, country_map_file)
 
         # Export endpoint summary
         endpoint_file = args.output.rsplit('.', 1)[0] + '_endpoint_summary.csv'

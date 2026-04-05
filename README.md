@@ -45,3 +45,4 @@ Exit code `0` if all checks pass, `1` if any failures.
 ./install.sh          # fixes bin/ permissions and adds tekadm/bin to your shell PATH
 source ./init.sh      # or manually add to ~/.bashrc / ~/.zshrc
 ```
+
