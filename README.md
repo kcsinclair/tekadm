@@ -39,6 +39,19 @@ Exit code `0` if all checks pass, `1` if any failures.
 
 ---
 
+### `bin/apache-logs.py`
+Apache/Nginx access log analyzer. Parses combined log format (IPv4 and IPv6), classifies user agents,
+detects suspect IPs via IPSUM threat intelligence, maps IPs to countries using MaxMind GeoLite2,
+and generates CSV reports plus traffic visualizations (bar charts and world heatmap).
+
+See [README-apache-logs.md](README-apache-logs.md) for full documentation.
+
+```bash
+python bin/apache-logs.py "/var/log/apache2/access*.log" -o report -i "SemrushBot"
+```
+
+---
+
 ## Setup
 
 ```bash

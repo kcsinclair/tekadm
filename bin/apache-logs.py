@@ -107,15 +107,16 @@ def parse_access_log(log_file, ignore_pattern=None):
     """
 
     # Apache/Nginx combined log format pattern
-    # Matches both IPv4 (192.168.1.1) and IPv6 ([2400:cb00:548:1000:4725:8fb3:735e:7194])
+    # Matches IPv4 (192.168.1.1) and IPv6 with or without brackets
+    # Handles escaped quotes (\") in referer and user-agent fields
     log_pattern = re.compile(
-        r'(\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])\s+'  # IP address (IPv4 or IPv6)
+        r'(\d+\.\d+\.\d+\.\d+|\[?[0-9a-fA-F:]+\]?)\s+'  # IP address (IPv4 or IPv6)
         r'.*?\[([^\]]+)\]\s+'  # Timestamp
         r'"([A-Z]+\s+\S+\s+\S+)"\s+'  # Request
         r'(\d+)\s+'  # Status code
         r'(\d+|-)\s+'  # Bytes sent
-        r'"([^"]*)"\s+'  # Referer
-        r'"([^"]*)"'  # User agent
+        r'"((?:[^"\\]|\\.)*)"\s+'  # Referer (handles escaped quotes)
+        r'"((?:[^"\\]|\\.)*)"'  # User agent (handles escaped quotes)
     )
 
     # Data structure: {ip: {'count': int, 'user_agents': {agent: {'count': int, 'first_seen': timestamp, 'last_seen': timestamp}}}}
@@ -291,25 +292,54 @@ def load_geolite2_blocks():
     return blocks
 
 
-def lookup_country(ip, blocks, locations):
+def load_geolite2_blocks_ipv6():
     """
-    Look up country for an IPv4 address using binary search on GeoLite2 blocks.
+    Load GeoLite2 IPv6 CIDR blocks as a sorted list for binary search.
+    Returns list of (start_int, end_int, geoname_id) sorted by start_int.
+    """
+    blocks_path = Path(__file__).resolve().parent.parent / 'GeoLite2' / 'GeoLite2-Country-Blocks-IPv6.csv'
+    blocks = []
+    try:
+        with open(blocks_path, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                geoname_id = row['geoname_id'] or row['registered_country_geoname_id']
+                if not geoname_id:
+                    continue
+                network = ipaddress.ip_network(row['network'], strict=False)
+                start_int = int(network.network_address)
+                end_int = int(network.broadcast_address)
+                blocks.append((start_int, end_int, geoname_id))
+        blocks.sort(key=lambda x: x[0])
+        print(f"  Loaded {len(blocks)} GeoLite2 IPv6 blocks")
+    except FileNotFoundError:
+        print(f"Warning: GeoLite2 IPv6 blocks file not found at {blocks_path}")
+    return blocks
+
+
+def lookup_country(ip, blocks, locations, blocks_ipv6=None):
+    """
+    Look up country for an IP address using binary search on GeoLite2 blocks.
+    Uses IPv4 or IPv6 block list depending on address type.
     Returns (country_name, country_iso_code, continent_name) or ("Unknown", ...) if not found.
     """
     try:
         ip_clean = ip.strip('[]')
         ip_obj = ipaddress.ip_address(ip_clean)
 
-        # IPv6 not supported for geo lookup yet
         if isinstance(ip_obj, ipaddress.IPv6Address):
-            return ("N/A", "N/A", "N/A")
+            if not blocks_ipv6:
+                return ("N/A", "N/A", "N/A")
+            search_blocks = blocks_ipv6
+        else:
+            search_blocks = blocks
 
         ip_int = int(ip_obj)
 
         # Binary search: find rightmost block where start_int <= ip_int
-        idx = bisect.bisect_right(blocks, (ip_int,)) - 1
+        idx = bisect.bisect_right(search_blocks, (ip_int,)) - 1
         if idx >= 0:
-            start_int, end_int, geoname_id = blocks[idx]
+            start_int, end_int, geoname_id = search_blocks[idx]
             if start_int <= ip_int <= end_int:
                 loc = locations.get(geoname_id, {})
                 return (
@@ -365,6 +395,21 @@ def classify_user_agent(user_agent):
         'Slurp': ['slurp', 'yahoo'],
         'DuckDuckBot': ['duckduckbot', 'duckduck'],
         'Yandex': ['yandex', 'yandeximages'],
+        'Applebot': ['applebot'],
+        'Aamazonbot': ['amazonbot', 'amzn-searchbot'],
+        'Bytespider': ['bytespider'],
+        'TikTokSpider': ['tiktokspider'],
+        'AhrefsBot': ['ahrefsbot'],
+        'OpenAI-ChatGPT-User': ['chatgpt-user'],
+        'OpenAI-Search': ['oai-searchbot'],
+        'FaceTwitterBot': ['facebookexternalhit', 'meta-externalagent'],
+        'MJ12bot': ['mj12bot'],
+        'Barkrowler': ['babbar.tech'],
+        'OpenSiteExplorer': ['opensiteexplorer'],
+        'SERankingBacklinksBot': ['serankingbacklinksbot'],
+        'OpenAi-GPTBot': ['gptbot'],
+        'PetalBot': ['petalbot'],
+        'Stripebot': ['stripebot'],
         'Crawler': ['crawler', 'spider', 'bot'],
     }
 
@@ -389,6 +434,7 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
     suspect_ips = load_suspect_ips()
     geo_locations = load_geolite2_locations()
     geo_blocks = load_geolite2_blocks()
+    geo_blocks_ipv6 = load_geolite2_blocks_ipv6()
 
     with open(output_file, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -399,7 +445,7 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
             # Strip brackets for IPv6 before checking suspect list
             ip_clean = ip.strip('[]')
             ip_status = "Suspect IP Address" if ip_clean in suspect_ips else "IP Address OK"
-            country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations)
+            country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations, geo_blocks_ipv6)
             agents_list = sorted(data['user_agents'].items(), key=lambda x: x[1]['count'], reverse=True)
 
             for idx, (agent, agent_data) in enumerate(agents_list):
@@ -496,12 +542,13 @@ def generate_country_graph(traffic_summary, output_file='country_summary.png'):
 
     geo_locations = load_geolite2_locations()
     geo_blocks = load_geolite2_blocks()
+    geo_blocks_ipv6 = load_geolite2_blocks_ipv6()
 
     # Aggregate request counts by country
     country_counts = defaultdict(int)
 
     for ip, data in traffic_summary.items():
-        country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations)
+        country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations, geo_blocks_ipv6)
         country_counts[country_name] += data['count']
 
     if not country_counts:
@@ -599,12 +646,13 @@ def generate_country_map(traffic_summary, output_file='country_map.png'):
 
     geo_locations = load_geolite2_locations()
     geo_blocks = load_geolite2_blocks()
+    geo_blocks_ipv6 = load_geolite2_blocks_ipv6()
 
     # Aggregate request counts by ISO country code
     country_code_counts = defaultdict(lambda: {'count': 0, 'name': ''})
 
     for ip, data in traffic_summary.items():
-        country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations)
+        country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations, geo_blocks_ipv6)
         if country_iso and country_iso not in ('Unknown', 'N/A'):
             country_code_counts[country_iso]['count'] += data['count']
             country_code_counts[country_iso]['name'] = country_name
@@ -744,13 +792,50 @@ def merge_url_type_summaries(summaries):
     return merged
 
 
+def _extract_first_timestamp(filepath):
+    """
+    Read the first parseable timestamp from a log file.
+    Returns a datetime string like '22/Mar/2026:00:01:42 +0000' or None.
+    """
+    timestamp_re = re.compile(r'\[([^\]]+)\]')
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                m = timestamp_re.search(line)
+                if m:
+                    return m.group(1)
+    except (OSError, UnicodeDecodeError):
+        pass
+    return None
+
+
+def _parse_log_timestamp(ts_str):
+    """Parse an Apache timestamp string into a datetime for sorting."""
+    from datetime import datetime
+    try:
+        return datetime.strptime(ts_str, '%d/%b/%Y:%H:%M:%S %z')
+    except (ValueError, TypeError):
+        return None
+
+
 def process_log_files(log_pattern, ignore_pattern=None):
     """
     Process log files matching a pattern (supports wildcards).
+    Files are sorted by the timestamp of their first log line (oldest first).
     Returns merged summaries from all matching files.
     """
     # Expand wildcard pattern
     matching_files = sorted(glob.glob(log_pattern))
+
+    # Sort files by date of first log entry (oldest first)
+    file_dates = []
+    for f in matching_files:
+        ts_str = _extract_first_timestamp(f)
+        ts = _parse_log_timestamp(ts_str) if ts_str else None
+        file_dates.append((f, ts))
+    # Files with a parseable timestamp sort by date; others go to the end
+    file_dates.sort(key=lambda x: (x[1] is None, x[1]))
+    matching_files = [f for f, _ in file_dates]
 
     if not matching_files:
         print(f"Error: No files matching pattern '{log_pattern}'")

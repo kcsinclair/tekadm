@@ -6,7 +6,7 @@ A Python utility for parsing and analyzing Apache/Nginx web server access logs. 
 
 - **Traffic Summary by IP**: Aggregates request counts and user agents by IP address
 - **Suspect IP Detection**: Flags IPs found in the IPSUM threat intelligence list (`ipsum/ipsum-bad.txt`)
-- **GeoIP Country Lookup**: Maps IPv4 addresses to country and continent using MaxMind GeoLite2 database
+- **GeoIP Country Lookup**: Maps IPv4 and IPv6 addresses to country and continent using MaxMind GeoLite2 database
 - **User Agent Classification**: Automatically categorizes user agents (browsers, bots, crawlers, etc.)
 - **Endpoint Analysis**: Tracks individual endpoint access with method, full path, and short endpoint pattern
 - **URL Pattern Analysis**: Groups endpoints by their first two path segments for high-level traffic patterns
@@ -65,7 +65,7 @@ Detailed breakdown by IP address and user agent.
 **Columns:**
 - IP Address (IPv4 or IPv6)
 - IP Status (`Suspect IP Address` or `IP Address OK` — checked against IPSUM threat list)
-- Country (country name from GeoLite2, or `N/A` for IPv6, `Unknown` if not found)
+- Country (country name from GeoLite2, `Unknown` if not found)
 - Country Code (ISO 3166-1 alpha-2 code, e.g., `US`, `AU`, `CN`)
 - Continent (continent name, e.g., `North America`, `Asia`, `Europe`)
 - Network Subnet (IPv4: /24 subnet, IPv6: /64 subnet)
@@ -128,12 +128,13 @@ The script expects Apache/Nginx combined log format and supports both **IPv4 and
 192.168.1.100 - - [13/Mar/2026:14:07:06 +0000] "GET /shop/product/123 HTTP/1.1" 200 1024 "-" "Mozilla/5.0"
 ```
 
-**IPv6 Example:**
+**IPv6 Examples:**
 ```
 [2400:cb00:548:1000:4725:8fb3:735e:7194] - - [13/Mar/2026:14:07:06 +0000] "POST /api/search HTTP/1.1" 200 2048 "-" "curl/7.64.1"
+2001:41d0:303:b76a::1 - - [04/Apr/2026:12:14:49 +0000] "GET /robots.txt HTTP/1.1" 200 3578 "-" "Mozilla/5.0"
 ```
 
-**Note:** IPv6 addresses should be enclosed in square brackets `[]`, which is the Apache/Nginx standard format.
+**Note:** IPv6 addresses are supported both with and without square brackets `[]`. Fields containing escaped quotes (`\"`) in the referer or user-agent are also handled correctly.
 
 ## Data Processing
 
@@ -163,11 +164,12 @@ Pattern-based classification with support for:
 
 ### GeoIP Country Lookup (GeoLite2)
 - Uses MaxMind GeoLite2 Country database files from the `GeoLite2/` folder:
-  - `GeoLite2-Country-Blocks-IPv4.csv` — CIDR network ranges mapped to geoname IDs
+  - `GeoLite2-Country-Blocks-IPv4.csv` — IPv4 CIDR network ranges mapped to geoname IDs
+  - `GeoLite2-Country-Blocks-IPv6.csv` — IPv6 CIDR network ranges mapped to geoname IDs
   - `GeoLite2-Country-Locations-en.csv` — geoname IDs mapped to country/continent names
-- CIDR blocks are loaded into a sorted list and matched via binary search for performance
+- CIDR blocks are loaded into sorted lists and matched via binary search for performance
 - Falls back to `registered_country_geoname_id` when primary `geoname_id` is empty
-- IPv6 geo lookup is not yet supported (columns show `N/A`)
+- Both IPv4 and IPv6 addresses are resolved to country/continent
 - If GeoLite2 files are missing, a warning is printed and country columns show `Unknown`
 
 ### Network Blocks
@@ -182,10 +184,11 @@ Pattern-based classification with support for:
 ## Merging Multiple Files
 
 When processing multiple log files with a wildcard pattern, the script:
-1. Parses each file independently
-2. Merges all traffic summaries while tracking earliest and latest timestamps
-3. Combines results into single CSV files
-4. Generates aggregated statistics across all files
+1. Reads the first timestamp from each file and sorts them in chronological order (oldest first)
+2. Parses each file independently in date order
+3. Merges all traffic summaries while tracking earliest and latest timestamps
+4. Combines results into single CSV files
+5. Generates aggregated statistics across all files
 
 ## Performance Notes
 
@@ -215,6 +218,7 @@ The following data files are expected relative to the project root. The script d
 |--------|------|---------|
 | `ipsum/` | `ipsum-bad.txt` | IPSUM threat intelligence IP list (one IP per line) |
 | `GeoLite2/` | `GeoLite2-Country-Blocks-IPv4.csv` | MaxMind GeoLite2 IPv4 CIDR-to-geoname mapping |
+| `GeoLite2/` | `GeoLite2-Country-Blocks-IPv6.csv` | MaxMind GeoLite2 IPv6 CIDR-to-geoname mapping |
 | `GeoLite2/` | `GeoLite2-Country-Locations-en.csv` | MaxMind GeoLite2 geoname-to-country/continent mapping |
 
 **IPSUM**: Updated via `bin/ipsum-update.sh`. See [stamparm/ipsum](https://github.com/stamparm/ipsum) for details.
