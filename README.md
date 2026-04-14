@@ -52,6 +52,20 @@ python bin/apache-logs.py "/var/log/apache2/access*.log" -o report -i "SemrushBo
 
 ---
 
+### `htdocs/api-tester.php`
+Standalone PHP CRUD API endpoint for API testing. Token-authenticated, stores data as a JSON file.
+Supports create, read, update, delete operations on an animals dataset. Drop onto any PHP web server.
+
+```bash
+# Example: create an animal
+curl -X POST -H "Authorization: Bearer changeme-secret-token-123" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Platypus","count":3,"location":"Queensland","date_seen":"2026-04-14"}' \
+  "https://example.com/api-tester.php?action=create"
+```
+
+---
+
 ## Setup
 
 ```bash

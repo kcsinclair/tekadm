@@ -12,6 +12,7 @@ Last updated: 2026-04-14
 | `bin/audit-linux.sh` | Linux security hardening audit (~80 controls, 9 categories) | Done |
 | `bin/apache-logs.py` | Apache/Nginx access log analyzer with traffic reports | Done |
 | `bin/ipsum-update.sh` | Updates IPSUM threat intelligence IP list | Done |
+| `htdocs/api-tester.php` | Standalone PHP CRUD API endpoint for API testing | Done |
 
 ### apache-logs.py Features
 
@@ -60,3 +61,4 @@ From CLAUDE.md project scope and roadmap:
 - Updated READMEs
 - Added `plans/` folder with project plan and implementation plan archiving
 - Archived implementation plans: `geolite2-country-lookup.md`, `copy-plans-to-project.md`
+- Added `htdocs/api-tester.php` — standalone PHP CRUD API for API testing (animals dataset, JSON file storage, token auth)
