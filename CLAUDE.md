@@ -11,6 +11,8 @@ Planned scope includes: swap/memory analysis, security audit and hardening, SAR 
 ## Repository Structure
 
 - `bin/` — Executable scripts (e.g., `swap.sh` for per-process swap usage on Linux via `/proc`)
+- `plans/` — Project plans and roadmap (kept up to date with each commit)
+- `test/` — Test scripts and test data
 - `notes.md` — Project roadmap and ideas (git-ignored)
 
 ## Conventions
@@ -19,6 +21,10 @@ Planned scope includes: swap/memory analysis, security audit and hardening, SAR 
 - **OS detection**: Every script should check the OS and handle unsupported platforms gracefully
 - **Philosophy**: "Simple effective works" — minimal dependencies, maximum compatibility
 - **Scripts go in `bin/`** and should be executable with a proper shebang line (`#!/bin/env bash` or similar)
+
+## Commit Conventions
+
+- **Plans**: Every git commit must include an updated `plans/PROJECT_PLAN.md` reflecting what changed and the current project state. Update the "Recent Changes" section and any affected "Completed" or "Planned" items before committing.
 
 ## No Build System
 
