@@ -386,53 +386,86 @@ def classify_user_agent(user_agent):
     Add more patterns to the agent_patterns dict as needed.
     """
     # Pattern matching rules: (type, list_of_patterns)
+    # Order matters — specific patterns must come before generic ones (e.g. 'Crawler')
     agent_patterns = {
+        # AI bots and assistants
+        'Claude-User': ['claude-user'],
         'ClaudeBot': ['claudebot', 'claude-web'],
-        'Baiduspider': ['baiduspider', 'baidu'],
-        'SemrushBot': ['semrushbot', 'semrush'],
-        'Googlebot': ['googlebot', 'google'],
-        'Bingbot': ['bingbot', 'bing'],
-        'Slurp': ['slurp', 'yahoo'],
-        'DuckDuckBot': ['duckduckbot', 'duckduck'],
-        'Yandex': ['yandex', 'yandeximages'],
-        'Applebot': ['applebot'],
-        'Aamazonbot': ['amazonbot', 'amzn-searchbot'],
-        'Bytespider': ['bytespider'],
-        'TikTokSpider': ['tiktokspider'],
-        'AhrefsBot': ['ahrefsbot'],
+        'ChatGPT-App': ['chatgpt/'],
         'OpenAI-ChatGPT-User': ['chatgpt-user'],
         'OpenAI-Search': ['oai-searchbot'],
-        'FaceTwitterBot': ['facebookexternalhit', 'meta-externalagent'],
+        'OpenAi-GPTBot': ['gptbot'],
+        'PerplexityBot': ['perplexitybot'],
+        # Search engine bots
+        'Googlebot': ['googlebot', 'google'],
+        'Bingbot': ['bingbot', 'bing'],
+        'Baiduspider': ['baiduspider', 'baidu'],
+        'Slurp': ['slurp', 'yahoo'],
+        'DuckDuckBot': ['duckduckbot', 'duckduck', 'ddg_'],
+        'Yandex': ['yandex', 'yandeximages'],
+        'Applebot': ['applebot'],
+        'Marginalia-Search': ['search.marginalia.nu'],
+        # SEO and analytics bots
+        'SemrushBot': ['semrushbot', 'semrush'],
+        'AhrefsBot': ['ahrefsbot'],
         'MJ12bot': ['mj12bot'],
         'Barkrowler': ['babbar.tech'],
         'OpenSiteExplorer': ['opensiteexplorer'],
         'SERankingBacklinksBot': ['serankingbacklinksbot'],
-        'OpenAi-GPTBot': ['gptbot'],
         'PetalBot': ['petalbot'],
-        'Stripebot': ['stripebot'],
+        # Social media and platform bots
+        'Amazonbot': ['amazonbot', 'amzn-searchbot'],
+        'Bytespider': ['bytespider'],
+        'TikTokSpider': ['tiktokspider'],
+        'FacebookBot': ['facebookexternalhit', 'meta-externalagent'],
         'LinkedInBot': ['linkedinbot'],
-        'PerplexityBot': ['perplexitybot'],
+        'Stripebot': ['stripebot'],
         'Checkbot': ['checkbot/'],
+        # Scrapers (before generic Crawler)
+        'Scrapy': ['scrapy/'],
+        # Generic crawler (catch-all for anything with bot/spider/crawler)
         'Crawler': ['crawler', 'spider', 'bot'],
         # HTTP clients and libraries
         'curl': ['curl/'],
-        'Python-Client': ['python-requests/', 'python/', 'aiohttp/'],
-        'Go-Client': ['go-http-client/'],
+        'wget': ['wget/'],
+        'Python-Client': ['python-requests/', 'python-httpx/', 'python/', 'aiohttp/'],
+        'PHP-Client': ['php/', 'guzzlehttp/'],
+        'Go-Client': ['go-http-client/', 'colly', 'go-camo', 'quic-go-http', 'req/v'],
+        'Java-Client': ['apache-httpclient/', 'java/', 'scalaj-http/', 'ahc/'],
         'Node-Client': ['node-fetch/', 'axios/'],
         'Bun-Client': ['bun/'],
-        # Feed readers
-        'Feed-Reader': ['feedly/', 'feedfetcher', 'feedparser'],
-        # Security scanners
-        'Security-Scanner': ['palo alto networks', 'cortex-xpanse', 'iaudit/'],
-        # Link checkers
-        'Link-Checker': ['lychee/'],
-        # Content platforms
-        'Turnitin': ['turnitin'],
-        'Substack': ['substackcontentfetch'],
-        'Amazon-Service': ['amazon-quick-on-behalf-of'],
-        'Terra-Cotta': ['terra cotta', 'ceramicterracotta'],
+        # Android clients
+        'Android-Client': ['dalvik/', 'androidhttpclient', 'androiddownloadmanager'],
         # Apple/iOS networking
         'Apple-Networking': ['networkingextension/', 'cfnetwork/', 'com.apple.webkit.networking/'],
+        # Download managers
+        'Download-Manager': ['aria2/'],
+        # Feed readers
+        'Feed-Reader': ['feedly/', 'feedfetcher', 'feedparser', 'rss-parser', 'rome client'],
+        # WordPress ecosystem
+        'WordPress': ['wordpress', 'jetpack', 'wp-urldetails', 'wpmu dev'],
+        # Content platforms
+        'Grammarly': ['grammarly/'],
+        'Turnitin': ['turnitin'],
+        'Substack': ['substackcontentfetch'],
+        'Content-Embed': ['iframely/'],
+        'Microsoft-Office': ['microsoft office'],
+        'Amazon-Service': ['amazon-quick-on-behalf-of'],
+        'Terra-Cotta': ['terra cotta', 'ceramicterracotta'],
+        # Security scanners and pentest tools
+        'Security-Scanner': ['palo alto networks', 'cortex-xpanse', 'iaudit/',
+                             'fuzz faster u fool', 'squirrelscan', 'hcp analyzer'],
+        # Link checkers
+        'Link-Checker': ['lychee/', 'integrity/', 'probe-image-size',
+                         'wikidata-url-platform-liveness', 'broken link checker'],
+        # Strange/suspicious/legacy user agents
+        'Strange User Agent': ['more internet explorer', 'p3p validator',
+                               'nokian7', 'sonyericsson', 'lg-lx550',
+                               'alittle client', 'netapi v', 'jinming-test',
+                               'mint-pdf-downloader', 'xenoforo/', 'rootevidence/',
+                               '7siters/', 'easybib', 'uzbl', 'buck/',
+                               'faraday v', 'photon/', 'eecs498',
+                               'xenforo/'],
     }
 
     user_agent_lower = user_agent.lower()
@@ -441,9 +474,9 @@ def classify_user_agent(user_agent):
     if not user_agent or user_agent.strip() == '-':
         return 'Empty User Agent'
 
-    # Handle bare "node" (exact match, not substring)
-    if user_agent_lower.strip() == 'node':
-        return 'Node-Client'
+    # Handle bare exact-match tokens
+    if user_agent_lower.strip() in ('node', 'pc'):
+        return 'Node-Client' if user_agent_lower.strip() == 'node' else 'Strange User Agent'
 
     # Check against patterns in order
     for agent_type, patterns in agent_patterns.items():
