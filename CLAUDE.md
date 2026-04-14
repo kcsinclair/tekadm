@@ -11,7 +11,7 @@ Planned scope includes: swap/memory analysis, security audit and hardening, SAR 
 ## Repository Structure
 
 - `bin/` — Executable scripts (e.g., `swap.sh` for per-process swap usage on Linux via `/proc`)
-- `plans/` — Project plans and roadmap (kept up to date with each commit)
+- `plans/` — Project plan, roadmap, and archived implementation plans (kept up to date with each commit)
 - `test/` — Test scripts and test data
 - `notes.md` — Project roadmap and ideas (git-ignored)
 
@@ -25,6 +25,7 @@ Planned scope includes: swap/memory analysis, security audit and hardening, SAR 
 ## Commit Conventions
 
 - **Plans**: Every git commit must include an updated `plans/PROJECT_PLAN.md` reflecting what changed and the current project state. Update the "Recent Changes" section and any affected "Completed" or "Planned" items before committing.
+- **Implementation plans**: When a Claude Code plan file (`~/.claude/plans/*.md`) was used for implementation, copy it into `plans/` with a descriptive name (e.g., `plans/geolite2-country-lookup.md`) and include it in the commit.
 
 ## No Build System
 

@@ -30,6 +30,7 @@ Last updated: 2026-04-14
 - Python venv at `python/` for apache-logs.py dependencies
 - Test suite: `test/test_parse_log_lines.py` for log line parsing
 - Data dependencies: `ipsum/` (threat IPs), `GeoLite2/` (country DB)
+- Implementation plans archived in `plans/` alongside PROJECT_PLAN.md
 
 ## Planned Work
 
@@ -57,3 +58,5 @@ From CLAUDE.md project scope and roadmap:
 - Files now processed in chronological order (sorted by first timestamp)
 - Added test suite for log line parsing (`test/test_parse_log_lines.py`)
 - Updated READMEs
+- Added `plans/` folder with project plan and implementation plan archiving
+- Archived implementation plans: `geolite2-country-lookup.md`, `copy-plans-to-project.md`
