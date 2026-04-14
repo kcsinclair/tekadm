@@ -411,9 +411,36 @@ def classify_user_agent(user_agent):
         'PetalBot': ['petalbot'],
         'Stripebot': ['stripebot'],
         'Crawler': ['crawler', 'spider', 'bot'],
+        # HTTP clients and libraries
+        'curl': ['curl/'],
+        'Python-Client': ['python-requests/', 'python/', 'aiohttp/'],
+        'Go-Client': ['go-http-client/'],
+        'Node-Client': ['node-fetch/', 'axios/'],
+        'Bun-Client': ['bun/'],
+        # Feed readers
+        'Feed-Reader': ['feedly/', 'feedfetcher', 'feedparser'],
+        # Security scanners
+        'Security-Scanner': ['palo alto networks', 'cortex-xpanse', 'iaudit/'],
+        # Link checkers
+        'Link-Checker': ['lychee/'],
+        # Content platforms
+        'Turnitin': ['turnitin'],
+        'Substack': ['substackcontentfetch'],
+        'Amazon-Service': ['amazon-quick-on-behalf-of'],
+        'Terra-Cotta': ['terra cotta', 'ceramicterracotta'],
+        # Apple/iOS networking
+        'Apple-Networking': ['networkingextension/', 'cfnetwork/', 'com.apple.webkit.networking/'],
     }
 
     user_agent_lower = user_agent.lower()
+
+    # Handle empty/missing user agent
+    if not user_agent or user_agent.strip() == '-':
+        return 'Empty User Agent'
+
+    # Handle bare "node" (exact match, not substring)
+    if user_agent_lower.strip() == 'node':
+        return 'Node-Client'
 
     # Check against patterns in order
     for agent_type, patterns in agent_patterns.items():

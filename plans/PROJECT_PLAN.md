@@ -68,3 +68,4 @@ From CLAUDE.md project scope and roadmap:
 
 ### 2026-04-15
 - Added `bin/log-datename.sh` — renames log files by appending date from first Apache timestamp
+- Expanded user agent classification with 12 new categories: curl, Python-Client, Go-Client, Node-Client, Bun-Client, Feed-Reader, Security-Scanner, Link-Checker, Apple-Networking, Turnitin, Substack, Amazon-Service, Terra-Cotta, Empty User Agent
