@@ -12,6 +12,7 @@ Last updated: 2026-04-14
 | `bin/audit-linux.sh` | Linux security hardening audit (~80 controls, 9 categories) | Done |
 | `bin/apache-logs.py` | Apache/Nginx access log analyzer with traffic reports | Done |
 | `bin/ipsum-update.sh` | Updates IPSUM threat intelligence IP list | Done |
+| `bin/log-datename.sh` | Rename log files by appending date from first log line | Done |
 | `htdocs/api-tester.php` | Standalone PHP CRUD API endpoint for API testing | Done |
 
 ### apache-logs.py Features
@@ -64,3 +65,6 @@ From CLAUDE.md project scope and roadmap:
 - Added `htdocs/api-tester.php` — standalone PHP CRUD API for API testing (animals dataset, JSON file storage, token auth)
 - Added HTML browser view to api-tester.php — serves styled table when accessed from a browser, JSON for API clients
 - Fixed Bearer token auth on Apache CGI/FastCGI — added apache_request_headers() fallback and X-API-Token custom header support
+
+### 2026-04-15
+- Added `bin/log-datename.sh` — renames log files by appending date from first Apache timestamp
