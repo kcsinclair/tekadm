@@ -208,6 +208,11 @@ switch ($action) {
 
     // ---- Unknown or missing action ------------------------------------------
     default:
+        // Serve HTML view for browsers, JSON for API clients
+        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+        if (strpos($accept, 'text/html') !== false) {
+            html_view($DATA_FILE);
+        }
         json_response([
             'name'    => 'api-tester',
             'version' => '1.0',
@@ -221,4 +226,72 @@ switch ($action) {
             'auth'    => 'Authorization: Bearer <token> header or ?token=<token> query param',
         ]);
         break;
+}
+
+
+// ============================================================================
+// HTML Browser View
+// ============================================================================
+
+function html_view($data_file) {
+    $animals = load_data($data_file);
+    $count = count($animals);
+    // Sort by name for display
+    usort($animals, function($a, $b) { return strcasecmp($a['name'] ?? '', $b['name'] ?? ''); });
+
+    header('Content-Type: text/html; charset=utf-8');
+    echo <<<'HTML_HEAD'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Tester — Animal Sightings</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         background: #f5f7fa; color: #333; padding: 2rem; }
+  h1 { margin-bottom: .25rem; }
+  .subtitle { color: #666; margin-bottom: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+          box-shadow: 0 1px 3px rgba(0,0,0,.1); border-radius: 6px; overflow: hidden; }
+  th, td { padding: .65rem .9rem; text-align: left; border-bottom: 1px solid #eee; }
+  th { background: #2c3e50; color: #fff; font-weight: 600; font-size: .85rem;
+       text-transform: uppercase; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f0f4f8; }
+  td.count { text-align: right; font-variant-numeric: tabular-nums; }
+  .uuid { font-family: "SF Mono", Monaco, Consolas, monospace; font-size: .8rem; color: #888; }
+  .empty { text-align: center; padding: 3rem; color: #999; }
+  .meta { margin-top: 1rem; font-size: .85rem; color: #888; }
+</style>
+</head>
+<body>
+<h1>Animal Sightings</h1>
+HTML_HEAD;
+
+    echo "<p class=\"subtitle\">$count record" . ($count !== 1 ? 's' : '') . "</p>\n";
+
+    if ($count === 0) {
+        echo '<div class="empty">No animals recorded yet. Use the API to add some.</div>';
+    } else {
+        echo "<table>\n<thead><tr>";
+        echo "<th>Name</th><th>Count</th><th>Location</th><th>Date Seen</th><th>UUID</th>";
+        echo "</tr></thead>\n<tbody>\n";
+        foreach ($animals as $a) {
+            $name     = htmlspecialchars($a['name'] ?? '');
+            $cnt      = htmlspecialchars($a['count'] ?? '');
+            $location = htmlspecialchars($a['location'] ?? '');
+            $date     = htmlspecialchars($a['date_seen'] ?? '');
+            $uuid     = htmlspecialchars($a['uuid'] ?? '');
+            echo "<tr><td>$name</td><td class=\"count\">$cnt</td>"
+               . "<td>$location</td><td>$date</td><td class=\"uuid\">$uuid</td></tr>\n";
+        }
+        echo "</tbody>\n</table>\n";
+    }
+
+    echo '<p class="meta">api-tester v1.0 &mdash; data file: '
+       . htmlspecialchars($data_file) . '</p>';
+    echo "\n</body>\n</html>\n";
+    exit;
 }
