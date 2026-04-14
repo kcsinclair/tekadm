@@ -411,6 +411,7 @@ def classify_user_agent(user_agent):
         'PetalBot': ['petalbot'],
         'Stripebot': ['stripebot'],
         'LinkedInBot': ['linkedinbot'],
+        'PerplexityBot': ['perplexitybot'],
         'Checkbot': ['checkbot/'],
         'Crawler': ['crawler', 'spider', 'bot'],
         # HTTP clients and libraries
