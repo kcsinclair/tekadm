@@ -410,6 +410,8 @@ def classify_user_agent(user_agent):
         'OpenAi-GPTBot': ['gptbot'],
         'PetalBot': ['petalbot'],
         'Stripebot': ['stripebot'],
+        'LinkedInBot': ['linkedinbot'],
+        'Checkbot': ['checkbot/'],
         'Crawler': ['crawler', 'spider', 'bot'],
         # HTTP clients and libraries
         'curl': ['curl/'],
