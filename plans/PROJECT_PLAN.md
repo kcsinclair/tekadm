@@ -63,3 +63,4 @@ From CLAUDE.md project scope and roadmap:
 - Archived implementation plans: `geolite2-country-lookup.md`, `copy-plans-to-project.md`
 - Added `htdocs/api-tester.php` — standalone PHP CRUD API for API testing (animals dataset, JSON file storage, token auth)
 - Added HTML browser view to api-tester.php — serves styled table when accessed from a browser, JSON for API clients
+- Fixed Bearer token auth on Apache CGI/FastCGI — added .htaccess rewrite, apache_request_headers() fallback, and X-API-Token custom header support

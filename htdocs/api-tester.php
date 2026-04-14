@@ -3,7 +3,10 @@
  * api-tester.php — Standalone CRUD API endpoint for API testing
  *
  * Drop onto any PHP-enabled web server. Data is stored as a JSON file on disk.
- * All requests require an API token via the Authorization header or ?token= query param.
+ * All requests require an API token. Supported methods (in priority order):
+ *   1. Authorization: Bearer <token>  (needs .htaccess on Apache CGI/FastCGI)
+ *   2. X-API-Token: <token>           (custom header, never stripped by Apache)
+ *   3. ?token=<token>                 (query parameter fallback)
  *
  * Endpoints (all via this single script):
  *   GET    ?action=list                  — list all animals
@@ -106,9 +109,25 @@ function validate_animal($input, $require_all = true) {
 
 function get_token() {
     // Check Authorization: Bearer <token>
-    $auth = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    // Apache/CGI often strips this header — check multiple server vars
+    $auth = '';
+    foreach (['HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION', 'HTTP_X_AUTHORIZATION'] as $key) {
+        if (!empty($_SERVER[$key])) {
+            $auth = $_SERVER[$key];
+            break;
+        }
+    }
+    // Also try apache_request_headers() which works under mod_php
+    if (!$auth && function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    }
     if (preg_match('/^Bearer\s+(.+)$/i', $auth, $m)) {
         return trim($m[1]);
+    }
+    // Check custom header: X-API-Token (not stripped by Apache)
+    if (!empty($_SERVER['HTTP_X_API_TOKEN'])) {
+        return trim($_SERVER['HTTP_X_API_TOKEN']);
     }
     // Fall back to ?token= query parameter
     return $_GET['token'] ?? '';
@@ -223,7 +242,7 @@ switch ($action) {
                 'PUT    ?action=update&uuid=<uuid>' => 'Update animal (JSON body: partial fields OK)',
                 'DELETE ?action=delete&uuid=<uuid>' => 'Delete animal',
             ],
-            'auth'    => 'Authorization: Bearer <token> header or ?token=<token> query param',
+            'auth'    => 'Authorization: Bearer <token> | X-API-Token: <token> | ?token=<token>',
         ]);
         break;
 }
