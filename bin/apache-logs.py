@@ -246,6 +246,41 @@ def load_suspect_ips():
         return set()
 
 
+def load_cloudflare_networks():
+    """
+    Load Cloudflare IP ranges from data/cloudflare-ip.txt.
+    Returns a list of ipaddress network objects for CIDR matching.
+    """
+    cf_path = Path(__file__).resolve().parent.parent / 'data' / 'cloudflare-ip.txt'
+    networks = []
+    try:
+        with open(cf_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                try:
+                    networks.append(ipaddress.ip_network(line, strict=False))
+                except ValueError:
+                    pass
+        print(f"  Loaded {len(networks)} Cloudflare IP ranges")
+    except FileNotFoundError:
+        print(f"Warning: Cloudflare IP list not found at {cf_path}")
+    return networks
+
+
+def is_cloudflare_ip(ip_str, networks):
+    """Check if an IP address falls within any Cloudflare CIDR range."""
+    try:
+        ip_obj = ipaddress.ip_address(ip_str.strip('[]'))
+        for net in networks:
+            if ip_obj in net:
+                return True
+    except ValueError:
+        pass
+    return False
+
+
 def load_geolite2_locations():
     """
     Load GeoLite2 country locations lookup.
@@ -495,6 +530,7 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
     """Export summary to CSV for further analysis."""
 
     suspect_ips = load_suspect_ips()
+    cloudflare_nets = load_cloudflare_networks()
     geo_locations = load_geolite2_locations()
     geo_blocks = load_geolite2_blocks()
     geo_blocks_ipv6 = load_geolite2_blocks_ipv6()
@@ -505,9 +541,14 @@ def export_to_csv(traffic_summary, output_file='traffic_summary.csv'):
 
         for ip, data in sorted(traffic_summary.items(), key=lambda x: x[1]['count'], reverse=True):
             block_24, block_16 = get_ip_blocks(ip)
-            # Strip brackets for IPv6 before checking suspect list
+            # Strip brackets for IPv6 before checking IP status
             ip_clean = ip.strip('[]')
-            ip_status = "Suspect IP Address" if ip_clean in suspect_ips else "IP Address OK"
+            if ip_clean in suspect_ips:
+                ip_status = "Suspect IP Address"
+            elif is_cloudflare_ip(ip_clean, cloudflare_nets):
+                ip_status = "Cloudflare IP Address"
+            else:
+                ip_status = "IP Address OK"
             country_name, country_iso, continent_name = lookup_country(ip, geo_blocks, geo_locations, geo_blocks_ipv6)
             agents_list = sorted(data['user_agents'].items(), key=lambda x: x[1]['count'], reverse=True)
 

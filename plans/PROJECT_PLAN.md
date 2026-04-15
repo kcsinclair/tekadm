@@ -68,4 +68,5 @@ From CLAUDE.md project scope and roadmap:
 
 ### 2026-04-15
 - Added `bin/log-datename.sh` — renames log files by appending date from first Apache timestamp
+- Added Cloudflare IP detection — IPs in Cloudflare CIDR ranges (from `data/cloudflare-ip.txt`) shown as "Cloudflare IP Address" in CSV
 - Major expansion of user agent classification — reorganised into logical groups (AI bots, search engines, SEO, social media, scrapers, HTTP clients, mobile, content platforms, security scanners, link checkers, strange/legacy agents). New categories include: Claude-User, ChatGPT-App, WordPress, PHP-Client, Java-Client, Android-Client, Scrapy, wget, Download-Manager, Grammarly, Content-Embed, Microsoft-Office, Marginalia-Search, Strange User Agent, and more
