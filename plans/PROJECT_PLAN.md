@@ -1,6 +1,6 @@
 # tekadm Project Plan
 
-Last updated: 2026-04-14
+Last updated: 2026-04-21
 
 ## Current State
 
@@ -14,6 +14,8 @@ Last updated: 2026-04-14
 | `bin/ipsum-update.sh` | Updates IPSUM threat intelligence IP list | Done |
 | `bin/log-datename.sh` | Rename log files by appending date from first log line | Done |
 | `htdocs/api-tester.php` | Standalone PHP CRUD API endpoint for API testing | Done |
+| `link-tag-visualisation/` | Obsidian tag graph generators (2D Cytoscape.js, 3D three.js) | Done |
+| `prose-visualisation/` | Prose graph & word cloud generators for Obsidian markdown folders | Done |
 
 ### apache-logs.py Features
 
@@ -70,3 +72,7 @@ From CLAUDE.md project scope and roadmap:
 - Added `bin/log-datename.sh` — renames log files by appending date from first Apache timestamp
 - Added Cloudflare IP detection — IPs in Cloudflare CIDR ranges (from `data/cloudflare-ip.txt`) shown as "Cloudflare IP Address" in CSV
 - Major expansion of user agent classification — reorganised into logical groups (AI bots, search engines, SEO, social media, scrapers, HTTP clients, mobile, content platforms, security scanners, link checkers, strange/legacy agents). New categories include: Claude-User, ChatGPT-App, WordPress, PHP-Client, Java-Client, Android-Client, Scrapy, wget, Download-Manager, Grammarly, Content-Embed, Microsoft-Office, Marginalia-Search, Strange User Agent, and more
+
+### 2026-04-21
+- Imported `link-tag-visualisation/` — two self-contained Obsidian tag-graph generators: `generate_tag_graph.py` (2D Cytoscape.js) and `generate_tag_graph_3d.py` (3D three.js / 3d-force-graph). Scans a vault folder for markdown, extracts YAML and inline tags plus wiki-links, outputs an interactive HTML. Supports `article` and `link` modes, `obsidian://open` integration, and is Python-3.9+ stdlib only (PyYAML optional).
+- Imported `prose-visualisation/` — prose/notes visualisation suite: `generate_prose_graph.py` (2D), `generate_prose_graph_3d.py` (3D), `generate_wordcloud.py` (clickable-word word cloud). All stdlib-only, produce self-contained HTML with modal viewers, wiki-link navigation, tag nodes, virtual-vertex handling for unresolved links. Requirements/plan docs kept alongside: `viewer-requirements.md`, `wordcloud-requirements.md`.
